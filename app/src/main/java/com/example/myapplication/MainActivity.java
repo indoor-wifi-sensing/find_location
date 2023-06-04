@@ -10,8 +10,11 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
@@ -21,10 +24,18 @@ import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.google.gson.Gson;
+
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -33,6 +44,7 @@ import java.util.List;
 public class MainActivity extends AppCompatActivity {
 
     TextView txt;
+    private TextView textViewResponse;
 
     // Wifi 스캐닝, 권한 획득 관련 변수
     private PermissionSupport permission;
@@ -68,25 +80,10 @@ public class MainActivity extends AppCompatActivity {
         dbHelper = new NewSQLiteOpenHelper(MainActivity.this, "person.db", null, 1);
 
         txt = findViewById(R.id.distance);
+        textViewResponse = findViewById(R.id.textViewResponse);
         txt.setText("20.0m");
 
         String wifiData[][] = select();
-
-        String[][] wifi = new String[7][2];
-        wifi[0][0] = "94:64:24:9f:12:20";
-        wifi[0][1] = "-48"; // 0
-        wifi[1][0] = "94:64:24:9f:12:21";
-        wifi[1][1] = "-48"; // 0
-        wifi[2][0] = "94:64:24:9f:12:01";
-        wifi[2][1] = "-49"; // 10
-        wifi[3][0] = "1e:39:29:50:eb:13";
-        wifi[3][1] = "-49"; // 7
-        wifi[4][0] = "94:64:24:9f:12:00";
-        wifi[4][1] = "-51"; // 11
-        wifi[5][0] = "94:64:24:9f:03:e0";
-        wifi[5][1] = "-55"; // 0
-        wifi[6][0] = "94:64:24:9f:03:e2";
-        wifi[6][1] = "-55"; // 0
 
         // 시스템에서 각종 변경 정보를 인식했을 때, 그 중에서도 Wifi 스캔 값이 변경되었을 경우 동작
         wifiScanReceiver = new BroadcastReceiver() {
@@ -109,6 +106,30 @@ public class MainActivity extends AppCompatActivity {
         intentFilter.addAction(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION);
         this.registerReceiver(wifiScanReceiver, intentFilter);
 
+        scanBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                String[][] wifiData = new String[50][2];
+                int i = 0;
+                for (ScanResult choseWifi : wifiResult) {
+                    String MAC = choseWifi.BSSID;
+                    int rss = choseWifi.level;
+                    wifiData[i][0] = MAC;
+                    wifiData[i][1] = Integer.toString(rss);
+                    i++;
+                }
+
+                Gson gson = new Gson();
+                String jsonWifiData = gson.toJson(wifiData); // converting wifiData to JSON format
+
+                if (isNetworkAvailable()) {
+                    new SendDataTask().execute(jsonWifiData); // passing the json string instead of String array
+                } else {
+                    textViewResponse.setText("Network connection not available");
+                }
+            }
+        });
+
         submitBtn.setOnClickListener(new View.OnClickListener() {
             @SuppressLint("MissingPermission")
             @Override
@@ -127,106 +148,65 @@ public class MainActivity extends AppCompatActivity {
                 };
                 Collections.sort(wifiResult, comparator);
 
-                String pos = wifiData[0][2];
-                double[] disList = new double[500];
-                String[] disPos = new String[500];
-                int count = 0;
-                int[] check = new int[7];
-                int num = 0;
-                disPos[count] = pos;
-
-                for (String[] WiFi : wifiData) {
-//                    Log.e("pos", pos);
-                    if(WiFi[2] == null) {
-                        break;
-                    }
-                    if (!(WiFi[2].equals(pos))) {
-                        disList[count] = disList[count] / num;
-                        num = 0;
-                        count++;
-                        pos = WiFi[2];
-                        disPos[count] = pos;
-                        Log.e("dispos", disPos[count]);
-                    }
-                    num++;
-                    int checkPos = 0;
-                    for (ScanResult choseWifi : wifiResult) {
-                        String MAC = choseWifi.BSSID;
-                        if(MAC.equals((WiFi[0]))) {
-                            int a = Integer.parseInt(WiFi[1]) - choseWifi.level;
-                            a = a*a;
-                            disList[count] += Math.sqrt(a);
-                            checkPos = 1;
-                            break;
-                        }
-                    }
-                    if(checkPos == 0) {
-                        int a = Integer.parseInt(WiFi[1]);
-                        a = a*a;
-                        disList[count] += Math.sqrt(a);
-                    }
-                }
-
-                double min = disList[0];
-                int index = 0;
-                for (int i = 1; i < disList.length; i++) {
-                    if(disList[i] == 0) {
-                        break;
-                    }
-                    if (disList[i] < min) {
-                        min = disList[i];
-                        index = i;
-                    }
-                }
-
-                if(!(mtoast == null)) {
-                    mtoast.cancel();
-                }
-
-                mtoast = Toast.makeText(MainActivity.this, "distance = " + disPos[index], Toast.LENGTH_LONG);
-                mtoast.show();
-            }
-        });
-
-//
-//        submitBtn.setOnClickListener(new View.OnClickListener() {
-//            @Override
-//            public void onClick(View v) {
-//                Comparator<ScanResult> comparator = new Comparator<ScanResult>() {
-//                    @Override
-//                    public int compare(ScanResult o1, ScanResult o2) {
-//                        return o2.level - o1.level;
-//                    }
-//                };
-//                Collections.sort(wifiResult, comparator);
-//                double distance = 0;
+//                String pos = wifiData[0][2];
+//                double[] disList = new double[500];
+//                String[] disPos = new String[500];
+//                int count = 0;
 //                int[] check = new int[7];
-//                for (ScanResult choseWifi : wifiResult) {
-//                    String MAC = choseWifi.BSSID;
-//                    for (int i = 0; i < 7; i++) {
-//                        if(MAC.equals(wifi[i][0])) {
-//                            int a = Integer.parseInt(wifi[i][1]) - choseWifi.level;
-//                            Log.e("dBm1", choseWifi.BSSID + Integer.toString(choseWifi.level));
-//                            a = a * a;
-//                            distance += Math.sqrt(a);
-//                            check[i] = 1;
-//                            Log.e("distance", "distance = " + distance);
+//                int num = 0;
+//                disPos[count] = pos;
+//
+//                for (String[] WiFi : wifiData) {
+//                    if(WiFi[2] == null) {
+//                        break;
+//                    }
+//                    if (!(WiFi[2].equals(pos))) {
+//                        disList[count] = Math.sqrt(disList[count]);
+//                        disList[count] = disList[count] / num;
+//                        num = 0;
+//                        count++;
+//                        pos = WiFi[2];
+//                        disPos[count] = pos;
+//                    }
+//                    num++;
+//                    int checkPos = 0;
+//                    for (ScanResult choseWifi : wifiResult) {
+//                        String MAC = choseWifi.BSSID;
+//                        if(MAC.equals((WiFi[0]))) {
+//                            int a = Integer.parseInt(WiFi[1]) - choseWifi.level;
+//                            a = a*a;
+//                            disList[count] += a;
+//                            checkPos = 1;
 //                            break;
 //                        }
 //                    }
-//                }
-//                for (int i = 0; i < 7; i++) {
-//                    if (!(check[i] == 1)) {
-//                        int a = Integer.parseInt(wifi[i][1]);
-//                        a = a * a;
-//                        distance += Math.sqrt(a);
-//                        check[i] = 1;
+//                    if(checkPos == 0) {
+//                        int a = Integer.parseInt(WiFi[1]);
+//                        a = a*a;
+//                        disList[count] += a;
 //                    }
 //                }
 //
-//                Toast.makeText(MainActivity.this, "distance = " + distance, Toast.LENGTH_LONG).show();
-//            }
-//        });
+//                double min = disList[0];
+//                int index = 0;
+//                for (int i = 1; i < disList.length; i++) {
+//                    if(disList[i] == 0) {
+//                        break;
+//                    }
+//                    if (disList[i] < min) {
+//                        min = disList[i];
+//                        index = i;
+//                    }
+//                }
+//
+//                if(!(mtoast == null)) {
+//                    mtoast.cancel();
+//                }
+//
+//                mtoast = Toast.makeText(MainActivity.this, "distance = " + disPos[index], Toast.LENGTH_LONG);
+//                mtoast.show();
+            }
+        });
 
     }
 
@@ -254,7 +234,7 @@ public class MainActivity extends AppCompatActivity {
     private String[][] select() {
         db = dbHelper.getReadableDatabase();
         String[] columns = {"mac", "rss", "pos"};
-        String[][] result = new String[300][5];
+        String[][] result = new String[600][5];
         int cursorPos = 0;
 
         //Cursor cursor = db.query("fingerprint", columns, null, null, null, null, null);
@@ -325,4 +305,59 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
     }
 
+    // =================================================================================================================================
+
+    private boolean isNetworkAvailable() {
+        ConnectivityManager connectivityManager = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+        NetworkInfo networkInfo = connectivityManager.getActiveNetworkInfo();
+        return networkInfo != null && networkInfo.isConnected();
+    }
+
+    private class SendDataTask extends AsyncTask<String, Void, String> {
+        @Override
+        protected String doInBackground(String... params) {
+            try {
+                String urlString = "http://220.76.68.121:5000/api";
+                URL url = new URL(urlString);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setDoOutput(true);
+
+                // 요청 데이터 생성
+                JSONObject jsonParam = new JSONObject();
+                jsonParam.put("data", params[0]);
+
+                // 요청 데이터 전송
+                OutputStream os = conn.getOutputStream();
+                os.write(jsonParam.toString().getBytes("UTF-8"));
+                os.flush();
+                os.close();
+
+                Log.e("server", "성공");
+                // 응답 데이터 수신
+                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                StringBuilder response = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) {
+                    response.append(line);
+                }
+                br.close();
+
+                return response.toString();
+            } catch (Exception e) {
+                e.printStackTrace();
+                return "Network request failed: " + e.getMessage();
+            }
+        }
+
+        @Override
+        protected void onPostExecute(String result) {
+            if (result != null) {
+                textViewResponse.setText(result);
+            }
+        }
+    }
+
 }
+
