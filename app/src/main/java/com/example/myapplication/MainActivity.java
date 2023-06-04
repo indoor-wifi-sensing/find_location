@@ -8,8 +8,6 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.database.Cursor;
-import android.database.sqlite.SQLiteDatabase;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.wifi.ScanResult;
@@ -29,9 +27,6 @@ import com.google.gson.Gson;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -51,16 +46,10 @@ public class MainActivity extends AppCompatActivity {
     WifiManager wifiManager;
     BroadcastReceiver wifiScanReceiver;
 
-    // DB 관리 관련 변수
-    SQLiteDatabase db;
-    NewSQLiteOpenHelper dbHelper;
-
     //레이아웃 컨트롤 관련 변수
     Button scanBtn,submitBtn;
     ListView wifiList;
     List<ScanResult> wifiResult;
-
-    public static Toast mtoast;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -76,14 +65,9 @@ public class MainActivity extends AppCompatActivity {
         wifiList = findViewById(R.id.wifiList);
         wifiManager = (WifiManager) getSystemService(Context.WIFI_SERVICE);
 
-        copyDatabaseFromAssets();
-        dbHelper = new NewSQLiteOpenHelper(MainActivity.this, "person.db", null, 1);
-
         txt = findViewById(R.id.distance);
         textViewResponse = findViewById(R.id.textViewResponse);
         txt.setText("20.0m");
-
-        String wifiData[][] = select();
 
         // 시스템에서 각종 변경 정보를 인식했을 때, 그 중에서도 Wifi 스캔 값이 변경되었을 경우 동작
         wifiScanReceiver = new BroadcastReceiver() {
@@ -147,114 +131,9 @@ public class MainActivity extends AppCompatActivity {
                     }
                 };
                 Collections.sort(wifiResult, comparator);
-
-//                String pos = wifiData[0][2];
-//                double[] disList = new double[500];
-//                String[] disPos = new String[500];
-//                int count = 0;
-//                int[] check = new int[7];
-//                int num = 0;
-//                disPos[count] = pos;
-//
-//                for (String[] WiFi : wifiData) {
-//                    if(WiFi[2] == null) {
-//                        break;
-//                    }
-//                    if (!(WiFi[2].equals(pos))) {
-//                        disList[count] = Math.sqrt(disList[count]);
-//                        disList[count] = disList[count] / num;
-//                        num = 0;
-//                        count++;
-//                        pos = WiFi[2];
-//                        disPos[count] = pos;
-//                    }
-//                    num++;
-//                    int checkPos = 0;
-//                    for (ScanResult choseWifi : wifiResult) {
-//                        String MAC = choseWifi.BSSID;
-//                        if(MAC.equals((WiFi[0]))) {
-//                            int a = Integer.parseInt(WiFi[1]) - choseWifi.level;
-//                            a = a*a;
-//                            disList[count] += a;
-//                            checkPos = 1;
-//                            break;
-//                        }
-//                    }
-//                    if(checkPos == 0) {
-//                        int a = Integer.parseInt(WiFi[1]);
-//                        a = a*a;
-//                        disList[count] += a;
-//                    }
-//                }
-//
-//                double min = disList[0];
-//                int index = 0;
-//                for (int i = 1; i < disList.length; i++) {
-//                    if(disList[i] == 0) {
-//                        break;
-//                    }
-//                    if (disList[i] < min) {
-//                        min = disList[i];
-//                        index = i;
-//                    }
-//                }
-//
-//                if(!(mtoast == null)) {
-//                    mtoast.cancel();
-//                }
-//
-//                mtoast = Toast.makeText(MainActivity.this, "distance = " + disPos[index], Toast.LENGTH_LONG);
-//                mtoast.show();
             }
         });
 
-    }
-
-    //존재하는 DB 복사하기
-    private void copyDatabaseFromAssets() {
-        try {
-            InputStream inputStream = getAssets().open("person.db");
-            String outFileName = getDatabasePath("person.db").getPath();
-            OutputStream outputStream = new FileOutputStream(outFileName);
-
-            byte[] buffer = new byte[1024];
-            int length;
-            while ((length = inputStream.read(buffer)) > 0) {
-                outputStream.write(buffer, 0, length);
-            }
-
-            outputStream.flush();
-            outputStream.close();
-            inputStream.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private String[][] select() {
-        db = dbHelper.getReadableDatabase();
-        String[] columns = {"mac", "rss", "pos"};
-        String[][] result = new String[600][5];
-        int cursorPos = 0;
-
-        //Cursor cursor = db.query("fingerprint", columns, null, null, null, null, null);
-        Cursor cursor = db.rawQuery("Select * From fingerprint", null);
-        if (cursor != null && cursor.moveToFirst()) {
-            do {
-                String macValue = cursor.getString(0);
-                int rssValue = cursor.getInt(1);
-                String posValue = cursor.getString(2);
-
-                result[cursorPos][0] = macValue;
-                result[cursorPos][1] = Integer.toString(rssValue);
-                result[cursorPos][2] = posValue;
-
-                cursorPos += 1;
-            } while (cursor.moveToNext());
-        }
-
-        Log.i("result", result.toString());
-        return result;
     }
 
     //===========================================
@@ -304,8 +183,6 @@ public class MainActivity extends AppCompatActivity {
         }
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
     }
-
-    // =================================================================================================================================
 
     private boolean isNetworkAvailable() {
         ConnectivityManager connectivityManager = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
