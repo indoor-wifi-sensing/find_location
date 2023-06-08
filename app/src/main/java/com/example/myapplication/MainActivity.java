@@ -24,6 +24,7 @@ import android.widget.Toast;
 
 import com.google.gson.Gson;
 
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -38,6 +39,7 @@ import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
+    int count = 0;
     TextView txt;
     private TextView textViewResponse;
 
@@ -93,7 +95,7 @@ public class MainActivity extends AppCompatActivity {
         scanBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                String[][] wifiData = new String[50][2];
+                String[][] wifiData = new String[500][2];
                 int i = 0;
                 for (ScanResult choseWifi : wifiResult) {
                     String MAC = choseWifi.BSSID;
@@ -191,14 +193,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private class SendDataTask extends AsyncTask<String, Void, String> {
+
         @Override
         protected String doInBackground(String... params) {
             try {
-                String urlString = "http://220.76.68.121:5000/api";
+                String urlString = "http://172.16.237.123:5000/api";
                 URL url = new URL(urlString);
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
-                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setRequestProperty("Content-Type", "application/json;charset=UTF-8"); // UTF-8 인코딩 설정
                 conn.setDoOutput(true);
 
                 // 요청 데이터 생성
@@ -213,7 +216,7 @@ public class MainActivity extends AppCompatActivity {
 
                 Log.e("server", "성공");
                 // 응답 데이터 수신
-                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8")); // UTF-8 인코딩으로 읽기
                 StringBuilder response = new StringBuilder();
                 String line;
                 while ((line = br.readLine()) != null) {
@@ -231,7 +234,18 @@ public class MainActivity extends AppCompatActivity {
         @Override
         protected void onPostExecute(String result) {
             if (result != null) {
-                textViewResponse.setText(result);
+                try {
+                    JSONObject jsonResponse = new JSONObject(result);
+                    String message = jsonResponse.getString("message");
+                    String receivedData = jsonResponse.getString("received_data");
+
+                    textViewResponse.setText("Message: " + message + "\nReceived Data: " + receivedData);
+                    txt.setText(Integer.toString(count));
+                    count++;
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+                Log.e("text", "result = " + result);
             }
         }
     }
